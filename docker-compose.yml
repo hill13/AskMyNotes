@@ -1,0 +1,20 @@
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    container_name: askmynotes-db
+    environment:
+      POSTGRES_USER: askmynotes
+      POSTGRES_PASSWORD: askmynotes
+      POSTGRES_DB: askmynotes
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U askmynotes -d askmynotes"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
