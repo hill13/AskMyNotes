@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 from contextlib import contextmanager
+from dataclasses import dataclass
 
 import psycopg
 from pgvector.psycopg import register_vector
@@ -133,6 +134,78 @@ def insert_chunks(
             """,
             rows,
         )
+
+
+@dataclass(frozen=True)
+class Hit:
+    """One retrieved chunk, with everything needed to cite it."""
+    chunk_id: int
+    document_id: int
+    filename: str
+    chunk_index: int
+    text: str
+    page_start: int
+    page_end: int
+    distance: float
+
+    @property
+    def similarity(self) -> float:
+        """Cosine distance runs 0 (identical) to 2 (opposite); similarity is the
+        familiar 1 (identical) to -1 (opposite)."""
+        return 1.0 - self.distance
+
+    @property
+    def citation(self) -> str:
+        if self.page_start == self.page_end:
+            return f"{self.filename} p{self.page_start}"
+        return f"{self.filename} p{self.page_start}-{self.page_end}"
+
+
+def search(
+    conn,
+    query_vector: list[float],
+    k: int = 5,
+    document_id: int | None = None,
+) -> list[Hit]:
+    """Return the k chunks nearest to `query_vector` by cosine distance.
+
+    Takes a VECTOR, not a question -- turning text into a vector is embed.py's
+    job, and this layer has no business knowing which embedder is in use.
+
+    `document_id` scopes the search to a single document. Unused in v1, but it is
+    the hook for per-owner scoping later: multi-user isolation has to happen in
+    the retrieval query itself, not in application code above it.
+    """
+    if k < 1:
+        raise ValueError("k must be at least 1")
+
+    sql = """
+        SELECT c.id, c.document_id, d.filename, c.chunk_index, c.text,
+               c.page_start, c.page_end,
+               c.embedding <=> %s::vector AS distance
+        FROM chunks c
+        JOIN documents d ON d.id = c.document_id
+        {where}
+        ORDER BY c.embedding <=> %s::vector
+        LIMIT %s
+    """
+    literal = _to_vector_literal(query_vector)
+    if document_id is None:
+        sql = sql.format(where="")
+        params = (literal, literal, k)
+    else:
+        sql = sql.format(where="WHERE c.document_id = %s")
+        params = (literal, document_id, literal, k)
+
+    with conn.cursor() as cur:
+        cur.execute(sql, params)
+        return [
+            Hit(
+                chunk_id=r[0], document_id=r[1], filename=r[2], chunk_index=r[3],
+                text=r[4], page_start=r[5], page_end=r[6], distance=float(r[7]),
+            )
+            for r in cur.fetchall()
+        ]
 
 
 def main() -> None:

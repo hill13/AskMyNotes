@@ -6,3 +6,10 @@ venv/
 .pytest_cache/
 data/*.pdf
 .tiktoken_cache/
+
+# Private working files - never push (public repo)
+CLAUDE.md
+interview.md
+decisions.md
+security.md
+notes.md
