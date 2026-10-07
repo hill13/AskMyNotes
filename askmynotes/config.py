@@ -19,6 +19,9 @@ def _int(name: str, default: int) -> int:
 DATABASE_URL = os.getenv(
     "DATABASE_URL", "postgresql://askmynotes:askmynotes@localhost:5434/askmynotes"
 )
+# Seconds to wait for a connection. Short for local dev; a hosted DB with cold
+# starts (e.g. after deploy) may need this raised via .env.
+DB_CONNECT_TIMEOUT = _int("DB_CONNECT_TIMEOUT", 5)
 
 # Two different limits, enforced at two different moments. See limits.py.
 MAX_FILE_BYTES = _int("MAX_FILE_BYTES", 10 * 1024 * 1024)

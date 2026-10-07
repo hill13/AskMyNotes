@@ -52,7 +52,11 @@ def _to_vector_literal(vec: list[float]) -> str:
 
 @contextmanager
 def connect(dsn: str | None = None):
-    with psycopg.connect(dsn or config.DATABASE_URL) as conn:
+    # Fail fast when the database is down, instead of hanging on the OS-level
+    # TCP timeout (~40s per attempt, which made a Docker-down test run take 8+ min).
+    with psycopg.connect(
+        dsn or config.DATABASE_URL, connect_timeout=config.DB_CONNECT_TIMEOUT
+    ) as conn:
         try:
             register_vector(conn)
         except Exception:
