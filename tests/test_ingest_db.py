@@ -11,16 +11,6 @@ from askmynotes.ingest import ingest_pdf
 from askmynotes.limits import LimitExceeded
 
 
-@pytest.fixture(scope="module")
-def conn():
-    try:
-        with db.connect() as c:
-            db.init_schema(c)
-            yield c
-    except Exception as exc:  # no DB reachable
-        pytest.skip(f"database not available: {exc}")
-
-
 @pytest.fixture
 def notes_pdf(tmp_path):
     pymupdf = pytest.importorskip("pymupdf")

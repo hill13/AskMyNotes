@@ -10,20 +10,9 @@ import textwrap
 
 import pytest
 
-from askmynotes import db
 from askmynotes.embed import FakeEmbedder
 from askmynotes.ingest import ingest_pdf
 from askmynotes.query import retrieve
-
-
-@pytest.fixture(scope="module")
-def conn():
-    try:
-        with db.connect() as c:
-            db.init_schema(c)
-            yield c
-    except Exception as exc:
-        pytest.skip(f"database not available: {exc}")
 
 
 def _pdf(tmp_path, name, topics):
