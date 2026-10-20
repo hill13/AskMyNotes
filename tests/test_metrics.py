@@ -7,6 +7,7 @@ from askmynotes.db import Hit
 from evals.metrics import first_hit_rank, is_hit, random_baseline
 
 DECK = "lecture.pdf"
+OTHER = "other.pdf"
 
 
 def hit(page_start, page_end, filename=DECK):
@@ -14,46 +15,64 @@ def hit(page_start, page_end, filename=DECK):
                text="", page_start=page_start, page_end=page_end, distance=0.0)
 
 
+def gold(*pages, document=DECK):
+    return [(document, list(pages))]
+
+
 # --- is_hit -----------------------------------------------------------------
 
 def test_range_containing_gold_page_is_hit():
-    assert is_hit(hit(18, 20), DECK, [19])
+    assert is_hit(hit(18, 20), gold(19))
 
 
 def test_range_edges_count():
-    assert is_hit(hit(19, 22), DECK, [19])
-    assert is_hit(hit(15, 19), DECK, [19])
+    assert is_hit(hit(19, 22), gold(19))
+    assert is_hit(hit(15, 19), gold(19))
 
 
 def test_range_missing_gold_page_is_not_hit():
-    assert not is_hit(hit(20, 21), DECK, [19])
+    assert not is_hit(hit(20, 21), gold(19))
 
 
 def test_any_of_several_gold_pages_is_enough():
-    assert is_hit(hit(21, 23), DECK, [19, 22])
+    assert is_hit(hit(21, 23), gold(19, 22))
 
 
 def test_right_pages_wrong_document_is_not_hit():
-    assert not is_hit(hit(18, 20), "other.pdf", [19])
+    assert not is_hit(hit(18, 20, filename=OTHER), gold(19))
 
 
-def test_no_gold_pages_never_hits():
-    assert not is_hit(hit(1, 50), DECK, [])
+def test_empty_gold_never_hits():
+    assert not is_hit(hit(1, 50), [])
+
+
+def test_either_gold_document_counts():
+    # Reused slides: the same content lives in two decks; citing either is right.
+    both = [(DECK, [5]), (OTHER, [41])]
+    assert is_hit(hit(4, 6), both)
+    assert is_hit(hit(40, 42, filename=OTHER), both)
+
+
+def test_pages_belong_to_their_own_document():
+    # Page 41 is gold only in OTHER -- page 41 of DECK must not count.
+    both = [(DECK, [5]), (OTHER, [41])]
+    assert not is_hit(hit(40, 42), both)
+    assert not is_hit(hit(4, 6, filename=OTHER), both)
 
 
 # --- first_hit_rank ---------------------------------------------------------
 
 def test_rank_is_one_based():
     hits = [hit(1, 3), hit(18, 20), hit(19, 19)]
-    assert first_hit_rank(hits, DECK, [19]) == 2
+    assert first_hit_rank(hits, gold(19)) == 2
 
 
 def test_rank_none_when_nothing_hits():
-    assert first_hit_rank([hit(1, 3), hit(4, 6)], DECK, [19]) is None
+    assert first_hit_rank([hit(1, 3), hit(4, 6)], gold(19)) is None
 
 
 def test_rank_none_on_empty_results():
-    assert first_hit_rank([], DECK, [19]) is None
+    assert first_hit_rank([], gold(19)) is None
 
 
 # --- random_baseline --------------------------------------------------------

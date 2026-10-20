@@ -1,9 +1,13 @@
 """Retrieval metrics. Pure functions -- no database, no embedder -- so the
 scoring logic is unit-tested on its own before any number from it is trusted.
 
-A retrieved chunk is a hit when it comes from the gold document AND its page
-range overlaps a gold page (decisions.md #14: labels are by page, not chunk,
-so they survive re-chunking).
+`gold` is a list of (document, pages) spans: every place in the notes that
+answers the question. More than one when a professor reuses slides across
+decks -- the app may cite either, so the answer key must accept either.
+
+A retrieved chunk is a hit when it comes from a gold document AND its page
+range overlaps one of that document's gold pages (decisions.md #14: labels are
+by page, not chunk, so they survive re-chunking).
 """
 from __future__ import annotations
 
@@ -11,22 +15,25 @@ from math import comb
 
 from askmynotes.db import Hit
 
-
-def is_hit(hit: Hit, gold_document: str, gold_pages: list[int]) -> bool:
-    # Document first: page 11 of some other file is not the answer.
-    if hit.filename != gold_document:
-        return False
-    return any(hit.page_start <= p <= hit.page_end for p in gold_pages)
+Gold = list[tuple[str, list[int]]]
 
 
-def first_hit_rank(hits: list[Hit], gold_document: str, gold_pages: list[int]) -> int | None:
+def is_hit(hit: Hit, gold: Gold) -> bool:
+    # Document AND page together: page 11 of some other file is not the answer.
+    return any(
+        hit.filename == document and any(hit.page_start <= p <= hit.page_end for p in pages)
+        for document, pages in gold
+    )
+
+
+def first_hit_rank(hits: list[Hit], gold: Gold) -> int | None:
     """1-based rank of the first relevant chunk, or None if none was retrieved.
 
     recall@k = share of questions where this is not None.
     MRR      = mean of 1/rank, counting None as 0.
     """
     for rank, hit in enumerate(hits, start=1):
-        if is_hit(hit, gold_document, gold_pages):
+        if is_hit(hit, gold):
             return rank
     return None
 

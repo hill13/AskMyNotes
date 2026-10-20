@@ -68,19 +68,23 @@ def main(argv: list[str] | None = None) -> int:
             print("No chunks in the database. Ingest a document first.")
             return 1
         n = len(corpus)
+        # One letter per deck (A, B, C... by filename), with a legend at the end.
+        # With several decks, "p20-28" alone doesn't say which deck it came from.
+        decks = sorted({c.filename for c in corpus})
+        label = {name: chr(ord("A") + i) for i, name in enumerate(decks)}
 
         scored, ranks, baselines, warnings = [], [], [], []
         print(row("id", "category", "rank", "g", "base",
-                  "retrieved: pages  similarity  (* = gold)"))
+                  "retrieved: deck:pages  similarity  (* = gold)"))
         print()
 
         for q in questions:
             hits = retrieve(q["question"], conn=conn, embedder=embedder, k=args.k)
-            doc, gold = q["document"], q["gold_pages"]
+            gold = [(span["document"], span["pages"]) for span in q["gold"]]
             # Fixed-width cells so the same rank lines up down the column.
             shown = "   ".join(
-                f"{f'p{h.page_start}-{h.page_end}':<7} {h.similarity:5.2f}"
-                + ("*" if is_hit(h, doc, gold) else " ")
+                f"{f'{label[h.filename]}:p{h.page_start}-{h.page_end}':<9} {h.similarity:5.2f}"
+                + ("*" if is_hit(h, gold) else " ")
                 for h in hits
             )
 
@@ -93,13 +97,16 @@ def main(argv: list[str] | None = None) -> int:
                           f"top similarity {top:.2f}   (not scored)"))
                 continue
 
-            g = sum(is_hit(c, doc, gold) for c in corpus)
-            if g == 0:
-                # Usually a filename mismatch between the YAML and the DB. Without
-                # this check it would look like a retrieval miss.
-                warnings.append(f"{q['id']}: no chunk in the DB matches "
-                                f"'{doc}' pages {gold} -- check the filename / ingest")
-            rank = first_hit_rank(hits, doc, gold)
+            # Checked per span: with two gold documents, a typo in one would
+            # still leave g > 0 and quietly shrink the answer key.
+            for document, pages in gold:
+                if not any(is_hit(c, [(document, pages)]) for c in corpus):
+                    # Usually a filename mismatch between the YAML and the DB.
+                    # Without this it would look like a retrieval miss.
+                    warnings.append(f"{q['id']}: no chunk in the DB matches "
+                                    f"'{document}' pages {pages} -- check the filename / ingest")
+            g = sum(is_hit(c, gold) for c in corpus)
+            rank = first_hit_rank(hits, gold)
             base = random_baseline(n, g, args.k)
 
             scored.append(q["id"])
@@ -115,6 +122,7 @@ def main(argv: list[str] | None = None) -> int:
     print("-" * 100)
     print(f"recall@{args.k}  {recall:.2f}     MRR  {mrr:.2f}     random baseline  {mean_base:.2f}     "
           f"scored  {len(scored)}     N = {n} chunks")
+    print("decks:   " + "   ".join(f"{label[d]} = {d}" for d in decks))
     print(f"embedder: {embedder.model}")
     if embedder.model.startswith("fake-"):
         print("WARNING: fake embedder -- these numbers measure the harness, not retrieval.")
