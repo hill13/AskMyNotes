@@ -27,8 +27,10 @@ DB_CONNECT_TIMEOUT = _int("DB_CONNECT_TIMEOUT", 5)
 MAX_FILE_BYTES = _int("MAX_FILE_BYTES", 10 * 1024 * 1024)
 MAX_DOCUMENT_TOKENS = _int("MAX_DOCUMENT_TOKENS", 50_000)
 
-CHUNK_TOKENS = _int("CHUNK_TOKENS", 800)
-CHUNK_OVERLAP_TOKENS = _int("CHUNK_OVERLAP_TOKENS", 100)
+# Chosen by a measured sweep (100/200/400/800 at k=5), not guessed: 200 had the
+# best MRR. Slides run ~70-100 tokens/page, so 200 is about two slides.
+CHUNK_TOKENS = _int("CHUNK_TOKENS", 200)
+CHUNK_OVERLAP_TOKENS = _int("CHUNK_OVERLAP_TOKENS", 25)
 
 EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "fake").strip().lower()
 EMBEDDING_DIM = _int("EMBEDDING_DIM", 1536)

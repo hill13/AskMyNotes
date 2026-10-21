@@ -19,7 +19,6 @@ import yaml
 
 from askmynotes import config, db
 from askmynotes.embed import get_embedder
-from askmynotes.query import retrieve
 from evals.metrics import first_hit_rank, is_hit, random_baseline
 
 QUESTIONS = Path(__file__).parent / "questions.yaml"
@@ -67,7 +66,22 @@ def main(argv: list[str] | None = None) -> int:
         if not corpus:
             print("No chunks in the database. Ingest a document first.")
             return 1
+        if models != {embedder.model}:
+            # Checked BEFORE embedding anything: comparing new question vectors
+            # against stored vectors from another model is noise, so don't pay
+            # for the calls.
+            print(f"Stored vectors were made by {sorted(models)}, but this run would embed "
+                  f"questions with {embedder.model}. Re-ingest with --force, or pass "
+                  f"--provider to match.")
+            return 1
         n = len(corpus)
+
+        # All questions in ONE embedding call (the embedder batches by 100), not
+        # one call per question: 1 round trip instead of 24, and far fewer
+        # requests against the rate limit. This is retrieve() split in two --
+        # embed, then search -- so the search path is the same one the app uses.
+        vectors = embedder.embed([q["question"] for q in questions])
+
         # One letter per deck (A, B, C... by filename), with a legend at the end.
         # With several decks, "p20-28" alone doesn't say which deck it came from.
         decks = sorted({c.filename for c in corpus})
@@ -78,8 +92,8 @@ def main(argv: list[str] | None = None) -> int:
                   "retrieved: deck:pages  similarity  (* = gold)"))
         print()
 
-        for q in questions:
-            hits = retrieve(q["question"], conn=conn, embedder=embedder, k=args.k)
+        for q, vector in zip(questions, vectors, strict=True):
+            hits = db.search(conn, vector, k=args.k)
             gold = [(span["document"], span["pages"]) for span in q["gold"]]
             # Fixed-width cells so the same rank lines up down the column.
             shown = "   ".join(
@@ -126,9 +140,6 @@ def main(argv: list[str] | None = None) -> int:
     print(f"embedder: {embedder.model}")
     if embedder.model.startswith("fake-"):
         print("WARNING: fake embedder -- these numbers measure the harness, not retrieval.")
-    if models != {embedder.model}:
-        print(f"WARNING: stored vectors were made by {sorted(models)}, but the questions "
-              f"were embedded by {embedder.model}. Re-ingest with --force.")
     for w in warnings:
         print(f"WARNING: {w}")
     return 0
